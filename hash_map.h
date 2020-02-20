@@ -87,7 +87,7 @@ class HashMap {
     Hash hasher_;
 
     size_t get_hash(KeyType key) const {
-        const size_t hash = hasher(key);
+        const size_t hash = hasher_(key);
         return hash % TABLE_SIZE;
     }
 
