@@ -330,3 +330,4 @@ HashMap<KeyType, ValueType, Hash>::find(
   }
   return const_iterator(table_[table_index].iter);
 }
+
