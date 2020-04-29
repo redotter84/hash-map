@@ -26,7 +26,7 @@ class HashMap {
 
   explicit HashMap(
       std::initializer_list<KeyValuePair> init,
-      Hash _hasher = Hash());
+      Hash hasher = Hash());
 
   HashMap<KeyType, ValueType, Hash>& operator= (
       const HashMap<KeyType, ValueType, Hash>& other);
@@ -89,6 +89,7 @@ class HashMap {
   size_t GetHash(const KeyType& key) const;
   HashAndPosition GetHashAndPosition(const KeyType& key) const;
   void RebuildTableIfNeeded();
+  size_t IncrementTableIndex(size_t table_index) const;
 
   std::vector<TableElement> table_;
   std::list<KeyValuePair> key_value_pairs_;
@@ -110,10 +111,7 @@ HashMap<KeyType, ValueType, Hash>::GetHashAndPosition(
   const size_t hash = GetHash(key);
   size_t table_index = hash;
   while (table_[table_index].UsedAndEqualsOrErased(key)) {
-    ++table_index;
-    if (table_index >= table_size_) {
-      table_index = 0;
-    }
+    table_index = IncrementTableIndex(table_index);
   }
   return HashAndPosition(hash, table_index);
 }
@@ -142,6 +140,16 @@ void HashMap<KeyType, ValueType, Hash>::RebuildTableIfNeeded() {
 }
 
 template<class KeyType, class ValueType, class Hash>
+size_t HashMap<KeyType, ValueType, Hash>::IncrementTableIndex(
+    size_t table_index) const {
+  ++table_index;
+  if (table_index >= table_size_) {
+    table_index = 0;
+  }
+  return table_index;
+}
+
+template<class KeyType, class ValueType, class Hash>
 HashMap<KeyType, ValueType, Hash>::HashMap(Hash hasher)
     : hasher_(hasher) {
   clear();
@@ -163,8 +171,8 @@ inline HashMap<KeyType, ValueType, Hash>::HashMap(
 template<class KeyType, class ValueType, class Hash>
 HashMap<KeyType, ValueType, Hash>::HashMap(
     std::initializer_list<KeyValuePair> init,
-    Hash _hasher)
-    : hasher_(_hasher) {
+    Hash hasher)
+    : hasher_(hasher) {
   clear();
   for (const KeyValuePair& item : init) {
     insert(item);
@@ -228,23 +236,14 @@ void HashMap<KeyType, ValueType, Hash>::erase(const KeyType& key) {
   --key_value_pairs_size_;
   table_[table_index] = TableElement::ErasedElement();
   size_t erased_table_index_to_fill = table_index;
-  auto IncrementTableIndex = [&](size_t table_index) {
-    ++table_index;
-    if (table_index >= table_size_) {
-      table_index = 0;
-    }
-    return table_index;
-  };
   table_index = IncrementTableIndex(table_index);
   while (table_[table_index].is_used && table_index != hash) {
     const size_t other_hash = table_[table_index].hash;
-    if (other_hash != hash) {
-      table_index = IncrementTableIndex(table_index);
-      continue;
+    if (other_hash == hash) {
+      table_[erased_table_index_to_fill] = table_[table_index];
+      table_[table_index] = TableElement::ErasedElement();
+      erased_table_index_to_fill = table_index;
     }
-    table_[erased_table_index_to_fill] = table_[table_index];
-    table_[table_index] = TableElement::ErasedElement();
-    erased_table_index_to_fill = table_index;
     table_index = IncrementTableIndex(table_index);
   }
 }
