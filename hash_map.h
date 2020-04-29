@@ -55,11 +55,15 @@ class HashMap {
    public:
     bool is_used = false;
     bool is_erased = false;
-    typename std::list<KeyValuePair>::iterator iter;
+    iterator iter;
     size_t hash = 0;
+
     TableElement() {}
-    explicit TableElement(typename std::list<KeyValuePair>::iterator iter)
+    explicit TableElement(iterator iter)
         : is_used(true), iter(iter) {}
+    explicit TableElement(iterator iter, size_t hash)
+        : is_used(true), iter(iter), hash(hash) {}
+
     static TableElement ErasedElement() {
       TableElement erased_element;
       erased_element.is_erased = true;
@@ -74,6 +78,7 @@ class HashMap {
    public:
     size_t hash;
     size_t position;
+
     HashAndPosition(size_t hash, size_t position)
         : hash(hash), position(position) {}
   };
@@ -99,20 +104,15 @@ size_t HashMap<KeyType, ValueType, Hash>::GetHash(const KeyType& key) const {
 }
 
 template<class KeyType, class ValueType, class Hash>
-typename HashMap<KeyType, ValueType,
-        Hash>::HashAndPosition HashMap<KeyType, ValueType,
-                                       Hash>::GetHashAndPosition(
+typename HashMap<KeyType, ValueType, Hash>::HashAndPosition
+HashMap<KeyType, ValueType, Hash>::GetHashAndPosition(
     const KeyType& key) const {
   const size_t hash = GetHash(key);
   size_t table_index = hash;
-  while (true) {
+  while (table_[table_index].UsedAndEqualsOrErased(key)) {
+    ++table_index;
     if (table_index >= table_size_) {
       table_index = 0;
-    }
-    if (table_[table_index].UsedAndEqualsOrErased(key)) {
-      ++table_index;
-    } else {
-      break;
     }
   }
   return HashAndPosition(hash, table_index);
@@ -136,8 +136,7 @@ void HashMap<KeyType, ValueType, Hash>::RebuildTableIfNeeded() {
     HashAndPosition key_hash_pos = GetHashAndPosition(iter->first);
     size_t table_index = key_hash_pos.position;
     size_t hash = key_hash_pos.hash;
-    table_[table_index] = TableElement(iter);
-    table_[table_index].hash = hash;
+    table_[table_index] = TableElement(iter, hash);
     elements_indices_.push_back(table_index);
   }
 }
@@ -173,8 +172,8 @@ HashMap<KeyType, ValueType, Hash>::HashMap(
 }
 
 template<class KeyType, class ValueType, class Hash>
-HashMap<KeyType, ValueType, Hash>& HashMap<KeyType, ValueType,
-                                           Hash>::operator=(
+HashMap<KeyType, ValueType, Hash>&
+HashMap<KeyType, ValueType, Hash>::operator=(
     const HashMap<KeyType, ValueType, Hash>& other) {
   const HashMap<KeyType, ValueType, Hash> copy = other;
   clear();
@@ -201,8 +200,7 @@ Hash HashMap<KeyType, ValueType, Hash>::hash_function() const {
 }
 
 template<class KeyType, class ValueType, class Hash>
-void HashMap<KeyType, ValueType, Hash>::insert(
-    const KeyValuePair& item) {
+void HashMap<KeyType, ValueType, Hash>::insert(const KeyValuePair& item) {
   RebuildTableIfNeeded();
   HashAndPosition key_hash_pos = GetHashAndPosition(item.first);
   size_t table_index = key_hash_pos.position;
@@ -213,8 +211,7 @@ void HashMap<KeyType, ValueType, Hash>::insert(
   key_value_pairs_.push_back(item);
   ++key_value_pairs_size_;
   const auto iter = std::prev(key_value_pairs_.end());
-  table_[table_index] = TableElement(iter);
-  table_[table_index].hash = hash;
+  table_[table_index] = TableElement(iter, hash);
   elements_indices_.push_back(table_index);
 }
 
@@ -231,26 +228,24 @@ void HashMap<KeyType, ValueType, Hash>::erase(const KeyType& key) {
   --key_value_pairs_size_;
   table_[table_index] = TableElement::ErasedElement();
   size_t erased_table_index_to_fill = table_index;
-  ++table_index;
-  while (true) {
+  auto IncrementTableIndex = [&](size_t table_index) {
+    ++table_index;
     if (table_index >= table_size_) {
       table_index = 0;
     }
-    if (!table_[table_index].is_used) {
-      break;
-    }
-    if (table_index == hash) {
-      break;
-    }
+    return table_index;
+  };
+  table_index = IncrementTableIndex(table_index);
+  while (table_[table_index].is_used && table_index != hash) {
     const size_t other_hash = table_[table_index].hash;
     if (other_hash != hash) {
-      ++table_index;
+      table_index = IncrementTableIndex(table_index);
       continue;
     }
     table_[erased_table_index_to_fill] = table_[table_index];
     table_[table_index] = TableElement::ErasedElement();
     erased_table_index_to_fill = table_index;
-    ++table_index;
+    table_index = IncrementTableIndex(table_index);
   }
 }
 
@@ -267,8 +262,8 @@ ValueType& HashMap<KeyType, ValueType, Hash>::operator[](const KeyType& key) {
 }
 
 template<class KeyType, class ValueType, class Hash>
-const ValueType& HashMap<KeyType, ValueType,
-                         Hash>::at(const KeyType& key) const {
+const ValueType&
+HashMap<KeyType, ValueType, Hash>::at(const KeyType& key) const {
   HashAndPosition key_hash_pos = GetHashAndPosition(key);
   size_t table_index = key_hash_pos.position;
   if (!table_[table_index].is_used) {
@@ -290,35 +285,32 @@ void HashMap<KeyType, ValueType, Hash>::clear() {
 }
 
 template<class KeyType, class ValueType, class Hash>
-typename HashMap<KeyType, ValueType,
-                 Hash>::iterator HashMap<KeyType, ValueType, Hash>::begin() {
+typename HashMap<KeyType, ValueType, Hash>::iterator
+HashMap<KeyType, ValueType, Hash>::begin() {
   return iterator(key_value_pairs_.begin());
 }
 
 template<class KeyType, class ValueType, class Hash>
-typename HashMap<KeyType, ValueType,
-                 Hash>::iterator HashMap<KeyType, ValueType, Hash>::end() {
+typename HashMap<KeyType, ValueType, Hash>::iterator
+HashMap<KeyType, ValueType, Hash>::end() {
   return iterator(key_value_pairs_.end());
 }
 
 template<class KeyType, class ValueType, class Hash>
-typename HashMap<KeyType, ValueType,
-                 Hash>::const_iterator HashMap<KeyType, ValueType,
-                                               Hash>::begin() const {
+typename HashMap<KeyType, ValueType, Hash>::const_iterator
+HashMap<KeyType, ValueType, Hash>::begin() const {
   return const_iterator(key_value_pairs_.begin());
 }
 
 template<class KeyType, class ValueType, class Hash>
-typename HashMap<KeyType, ValueType,
-                 Hash>::const_iterator HashMap<KeyType, ValueType,
-                                               Hash>::end() const {
+typename HashMap<KeyType, ValueType, Hash>::const_iterator
+HashMap<KeyType, ValueType, Hash>::end() const {
   return const_iterator(key_value_pairs_.end());
 }
 
 template<class KeyType, class ValueType, class Hash>
-typename HashMap<KeyType, ValueType,
-                 Hash>::iterator HashMap<KeyType, ValueType,
-                                         Hash>::find(const KeyType& key) {
+typename HashMap<KeyType, ValueType, Hash>::iterator
+HashMap<KeyType, ValueType, Hash>::find(const KeyType& key) {
   HashAndPosition key_hash_pos = GetHashAndPosition(key);
   size_t table_index = key_hash_pos.position;
   if (!table_[table_index].is_used) {
@@ -328,9 +320,8 @@ typename HashMap<KeyType, ValueType,
 }
 
 template<class KeyType, class ValueType, class Hash>
-typename HashMap<KeyType, ValueType,
-                 Hash>::const_iterator HashMap<KeyType, ValueType,
-                                               Hash>::find(
+typename HashMap<KeyType, ValueType, Hash>::const_iterator
+HashMap<KeyType, ValueType, Hash>::find(
     const KeyType& key) const {
   HashAndPosition key_hash_pos = GetHashAndPosition(key);
   size_t table_index = key_hash_pos.position;
